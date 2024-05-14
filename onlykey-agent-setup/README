@@ -1,0 +1,86 @@
+# OnlyKey SSH Configuration Script README
+
+## Overview
+
+This Bash script automates the setup of SSH keys and socket files for use with OnlyKey. It ensures that the OnlyKey command-line tools are installed, processes a configuration file to extract email addresses (and optional key types), then generates SSH public key files and socket files accordingly. The script enhances security by setting strict permissions on the created socket files.
+
+## Dependencies
+
+The script depends on the following components being installed and properly configured on your system:
+
+- **Bash Shell**: The default shell on most Linux distributions and macOS. The script uses Bash-specific syntax and commands.
+- **OnlyKey Agent**: The OnlyKey command-line tools must be installed for this script to function. These tools are used to generate SSH keys and manage secure communication channels.
+- **OpenSSH**: Although not directly invoked by the script, the generated keys and socket files are intended for use with SSH clients that support custom authentication methods, such as OpenSSH.
+
+## How the Script Works
+
+### Checking for OnlyKey Agent
+
+The script begins by verifying that the `onlykey-agent` executable is available in the system's PATH. If it is not found, the script exits with an error message, indicating that the OnlyKey command-line tools must be installed.
+
+### Preparing Directories and Files
+
+It then proceeds to check for the existence of a configuration file at `~/.ssh/onlykey-ids.conf`. This file should contain one email address (and an optional key type) per line, with lines starting with `#` treated as comments and ignored. The script also ensures the necessary directories exist for storing the generated SSH public key files (`~/.ssh/onlykey-keys`) and socket files (`~/.ssh/onlykey-sockets`).
+
+### Generating Keys and Socket Files
+
+For each email address in the configuration file, the script checks if a corresponding SSH public key file exists. If not, it invokes the `onlykey-agent` to generate a new key, optionally specifying the key type if provided. It then checks for the existence of a socket file for the email address. If the socket file doesn't exist, it runs `onlykey-agent` in daemon mode to create the socket, again passing the key type if specified.
+
+### Setting Permissions
+
+After generating the socket files, the script waits for a short period to ensure all socket files are created. It then iterates over the list of newly created socket files and sets their permissions to ensure they are not accessible by other users or groups on the system.
+
+## Running the Script
+
+To run the script, ensure it has execute permissions:
+
+```bash
+chmod +x onlykey-agent-setup.sh
+```
+
+Then execute the script:
+
+```bash
+./onlykey-agent-setup.sh
+```
+
+Ensure that your ~/.ssh/onlykey-ids.conf file is correctly formatted and that you have the necessary permissions to create files and directories within your ~/.ssh directory.
+
+## Integrating with SSH Config and Security Considerations
+To streamline your SSH connections and automatically use the correct identity (private key) for each host, you can integrate the generated socket files with your ~/.ssh/config file using the IdentityAgent directive. This allows SSH to communicate with the onlykey-agent daemon via the specified socket file, ensuring the correct identity is used for each connection.
+
+However, it's important to note that using fixed filenames for socket files can introduce security risks. If another user knows the location of your socket file, they could potentially use your credentials. To mitigate these risks, the script sets restrictive permissions on the socket files (chmod go-rwx). Additionally, OnlyKey's requirement for physical interaction (a tap by the user) for every access to the private key significantly reduces the risk of unauthorized use. Even if an attacker were to access the socket, they would not be authorized without the physical tap on the OnlyKey device.
+
+### Example SSH Config Entry
+To configure SSH to use a specific socket file for a given host, add an entry to your ~/.ssh/config file like the following:
+
+```ssh
+Host example.com
+  HostName example.com
+  User your_username
+  IdentityFile ~/.ssh/onlykey-keys/your_email@example.com.pub
+  IdentityAgent ~/.ssh/onlykey-sockets/your_email@example.com.sock
+```
+
+This configuration tells SSH to use the public key located at ~/.ssh/onlykey-keys/your_email@example.com.pub and the socket file ~/.ssh/onlykey-sockets/your_email@example.com.sock as the agent for connections to example.com. Replace example.com, your_username, and your_email@example.com with the actual host, your SSH username, and the email address used in the onlykey-ids.conf file, respectively.
+
+By specifying the IdentityAgent for each host, you can ensure that SSH automatically selects the correct identity, leveraging the security and convenience of OnlyKey for SSH authentication.
+
+## Automating Script Execution on X Startup
+To ensure that your SSH environment is automatically prepared with the necessary socket files and permissions each time you start your session, you should include the onlykey-agent-setup.sh script in your X Window System startup process. This automation guarantees that the OnlyKey agent and your SSH configuration are ready to use without manual intervention every time you log in.
+
+For most desktop environments that use the X Window System, the best place to automate the execution of this script is through your desktop environment's startup applications settings. For example, in GNOME, you can add a new startup application in "Settings" > "Startup Applications" with the command field pointing to the full path of your onlykey-agent-setup.sh script. Alternatively, if you prefer or if your desktop environment does not offer a graphical interface for managing startup applications, you can add the script to your .xinitrc file, which is executed when X starts. Simply append the following line to .xinitrc:
+
+```bash
+/path/to/onlykey-agent-setup.sh &
+```
+
+Ensure you replace /path/to/onlykey-agent-setup.sh with the actual path to the script. If you're using a display manager (like GDM, LightDM, or SDDM), you might need to add the script to your desktop environment's specific startup script locations, such as .xprofile or .profile, depending on your configuration.
+
+## Configuring OnlyKey for Button Press Mode
+
+For the setup-onlykey-ssh.sh script and SSH configuration to work seamlessly with OnlyKey, it's crucial to adjust the OnlyKey's "Stored Key User Input Mode" to the "Button Press Required" setting. By default, OnlyKey is configured to require a 3-digit challenge code entered on the keypad whenever a key is used. However, since the onlykey-agent runs without a terminal in our setup, the challenge code cannot be displayed, rendering this default mode incompatible.
+
+To enable smooth operation, switch your OnlyKey to the "Button Press Required" mode. In this mode, using a key on the OnlyKey device simply requires a single press on any key to authorize its use. This adjustment ensures that the security mechanism does not interfere with the agent's background operation and allows for a seamless authentication process without the need for direct user interaction with the challenge-response system.
+
+Instructions for changing this setting can be found in the OnlyKey User's Guide under https://docs.onlykey.io/onlykey-agent.html#setting-stored-key-user-input-mode "Stored Key User Input Mode." Directly navigating to the Stored Challenge Mode section provides detailed steps on configuring your OnlyKey to the required state. This setting is essential for the proper functioning of the SSH setup described in this guide and ensures that your SSH key usage remains secure yet user-friendly.
